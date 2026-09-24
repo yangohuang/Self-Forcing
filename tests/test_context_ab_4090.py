@@ -2,7 +2,9 @@ import unittest
 
 import torch
 
-from scripts.context_ab_4090 import flow_training_pair, paired_step_seed, transition_rmse
+from scripts.context_ab_4090 import (flow_training_pair, paired_step_seed,
+                                     transition_rmse, assert_matched_baseline,
+                                     history_block_count)
 
 
 class ContextABTests(unittest.TestCase):
@@ -22,6 +24,19 @@ class ContextABTests(unittest.TestCase):
         metric = transition_rmse(video, frames_per_block=3)
         self.assertEqual(metric['boundary_rmse'], 10.0)
         self.assertEqual(metric['within_rmse'], 0.0)
+
+    def test_baseline_assertion_rejects_unpaired_validation(self):
+        same = [dict(teacher_flow_mse=0.1, self_flow_mse=0.2)]
+        assert_matched_baseline(same, [dict(same[0])])
+        with self.assertRaises(ValueError):
+            assert_matched_baseline(same, [dict(teacher_flow_mse=0.1,
+                                                self_flow_mse=0.3)])
+
+    def test_long_clip_history_blocks(self):
+        self.assertEqual(history_block_count(21), 6)
+        self.assertEqual(history_block_count(48), 15)
+        with self.assertRaises(ValueError):
+            history_block_count(49)
 
 
 if __name__ == '__main__':

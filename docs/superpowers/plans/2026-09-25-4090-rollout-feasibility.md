@@ -39,9 +39,9 @@
 - Modify: `scripts/rollout_probe_4090.py`
 - Create: `docs/benchmarks/2026-09-25-generated-history-ab.md`
 
-- [ ] Add clean-history and generated-history modes with identical model, noise, target, seed, training budget and evaluation paths.
-- [ ] Train each mode on the same small, declared data split and evaluate on held-out longer clips. Report boundary discontinuity, drift and a visual artifact; make no quality claim without the held-out test.
-- [ ] Repeat at least three seeds for any claimed directional improvement. Record failure cases and uncertainty.
+- [x] Add target-history and generated-history modes with identical model, final-block/context noise, target, seed, training budget and evaluation paths; rollout noise exists only in the generated-history arm.
+- [x] Train each mode on the same small, declared data split and evaluate on held-out 21- and 48-frame clips. Report latent boundary discontinuity, visual drift and a paired contact sheet; make no quality claim without the held-out test.
+- [x] Repeat three seeds and record the small proxy gain, target-history cost, inconsistent long-horizon results and uncertainty.
 
 ### Task 4: SoulX and interview handoff
 
@@ -49,7 +49,7 @@
 - Create: `docs/benchmarks/2026-09-25-soulx-vivix-decision.md`
 
 - [x] Relate the feasibility result to SoulX's observed block-12 jump and explain the gap between this Wan feasibility probe and a LiveAct forcing contribution.
-- [ ] Identify a concrete next SoulX PR candidate only if it improves held-out video; keep it on the personal fork and do not open an upstream PR.
-- [ ] Summarize the experiment as accurate interview evidence, separating prior merged work, new measured results and proposed research.
+- [x] Apply the contribution gate: no quality PR candidate passed held-out video, so retain the clean 4090 inference branch and do not open an upstream PR.
+- [x] Summarize the experiment as accurate interview evidence, separating prior merged work, new measured results and proposed research.
 
 **Decision gates:** A successful Task 2 permits Task 3. Missing weights, incompatible code, OOM after bounded reductions, or impractical wall time trigger an explicit no-go report and Task 4; do not invent a positive A/B result.

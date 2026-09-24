@@ -26,6 +26,12 @@ def paired_step_seed(seed: int, step: int) -> int:
     return seed * 1000003 + step * 7919 + 17
 
 
+def history_block_count(total_frames: int) -> int:
+    if total_frames <= 3 or total_frames % 3:
+        raise ValueError('total latent frames must be a multiple of three greater than three')
+    return total_frames // 3 - 1
+
+
 def transition_rmse(video: torch.Tensor, frames_per_block: int) -> dict:
     if video.ndim != 5 or frames_per_block < 1:
         raise ValueError('video must be [B,C,T,H,W] with positive block size')
@@ -38,12 +44,29 @@ def transition_rmse(video: torch.Tensor, frames_per_block: int) -> dict:
                 boundary_values=boundary)
 
 
+def assert_matched_baseline(first: list[dict], second: list[dict], tolerance=1e-5):
+    if len(first) != len(second):
+        raise ValueError('paired validation has unequal sample counts')
+    for index, (left, right) in enumerate(zip(first, second)):
+        for key in ('teacher_flow_mse', 'self_flow_mse'):
+            if not math.isclose(left[key], right[key], abs_tol=tolerance, rel_tol=0):
+                raise ValueError(f'unmatched pretraining {key} at validation sample {index}')
+
+
 def load_latent(path: Path) -> torch.Tensor:
     payload = torch.load(path, map_location='cpu', weights_only=True)
     latent = payload['latent']
     if latent.ndim != 4 or tuple(latent.shape) != (16, 21, 104, 60):
         raise ValueError(f'expected [16,21,104,60] latent in {path}; got {tuple(latent.shape)}')
     return latent.unsqueeze(0).to(device='cuda', dtype=torch.bfloat16)
+
+
+def load_long_latent(path: Path) -> torch.Tensor:
+    payload = torch.load(path, map_location='cpu', weights_only=True)
+    latent = payload['latent']
+    if latent.ndim != 4 or tuple(latent.shape) != (16, 49, 104, 60):
+        raise ValueError(f'expected [16,49,104,60] latent in {path}; got {tuple(latent.shape)}')
+    return latent[:, :48].unsqueeze(0).to(device='cuda', dtype=torch.bfloat16)
 
 
 def load_model(args):
@@ -61,6 +84,12 @@ def load_model(args):
             state = {key.removeprefix('model.'): value for key, value in state.items()}
         model.load_state_dict(state, strict=True)
         del state
+    # The training window is 21 latent frames. Roll longer validation with a
+    # 21-frame rolling KV context instead of allocating unbounded cache.
+    model.local_attn_size = 21
+    for block in model.blocks:
+        block.self_attn.local_attn_size = 21
+        block.self_attn.max_attention_size = 21 * 1560
     torch.manual_seed(args.seed)
     params = install_lora(model, args.rank)
     return model, params
@@ -68,7 +97,7 @@ def load_model(args):
 
 def make_caches(model, total_frames: int, h: int, w: int):
     tokens_per_frame = h * w // 4
-    kv = make_kv_cache(len(model.blocks), 1, total_frames * tokens_per_frame,
+    kv = make_kv_cache(len(model.blocks), 1, min(total_frames, 21) * tokens_per_frame,
                        model.num_heads, model.dim // model.num_heads,
                        torch.bfloat16, 'cuda')
     cross = [dict(is_init=False) for _ in model.blocks]
@@ -87,7 +116,7 @@ def fill_history(model, prompt, clean_video, mode, context_sigma, denoise_sigmas
     seq_len = frames * tokens_per_frame
     context_t = torch.full((1, frames), round(context_sigma * 1000),
                            device='cuda', dtype=torch.long)
-    for block in range(6):
+    for block in range(history_block_count(clean_video.shape[2])):
         current_start = block * seq_len
         if mode == 'teacher':
             x0 = clean_video[:, :, block * frames:(block + 1) * frames]
@@ -113,8 +142,9 @@ def fill_history(model, prompt, clean_video, mode, context_sigma, denoise_sigmas
 
 def one_example(model, prompt, clean_video, mode, args, step_seed: int,
                 training: bool):
-    _, _, _, h, w = clean_video.shape
-    kv, cross, tokens_per_frame = make_caches(model, 21, h, w)
+    _, _, total_frames, h, w = clean_video.shape
+    history_blocks = history_block_count(total_frames)
+    kv, cross, tokens_per_frame = make_caches(model, total_frames, h, w)
     rollout_rng = torch.Generator(device='cuda').manual_seed(step_seed + 10000)
     context_rng = torch.Generator(device='cuda').manual_seed(step_seed + 30000)
     current_rng = torch.Generator(device='cuda').manual_seed(step_seed + 20000)
@@ -122,7 +152,7 @@ def one_example(model, prompt, clean_video, mode, args, step_seed: int,
         history = fill_history(model, prompt, clean_video, mode,
                                args.context_sigma, args.denoise_sigmas,
                                rollout_rng, context_rng, kv, cross, tokens_per_frame)
-    clean = clean_video[:, :, 18:21]
+    clean = clean_video[:, :, -3:]
     noise = _noise(clean.shape, current_rng)
     xt, target = flow_training_pair(clean, noise, args.train_sigma)
     t = torch.full((1, 3), round(args.train_sigma * 1000),
@@ -132,7 +162,7 @@ def one_example(model, prompt, clean_video, mode, args, step_seed: int,
         prediction = model(xt, t=t, context=prompt,
                            seq_len=3 * tokens_per_frame,
                            kv_cache=kv, crossattn_cache=cross,
-                           current_start=18 * tokens_per_frame)
+                           current_start=history_blocks * 3 * tokens_per_frame)
         loss = F.mse_loss(prediction.float(), target.float())
     return loss, history
 
@@ -153,7 +183,8 @@ def evaluate(model, prompt, validation, args, seed: int):
     return records
 
 
-def train_mode(model, params, initial, prompt, training, validation, args, mode):
+def train_mode(model, params, initial, prompt, training, validation,
+               long_validation, args, mode):
     for p, init in zip(params, initial):
         p.data.copy_(init)
     optimizer = torch.optim.AdamW(params, lr=args.lr)
@@ -177,8 +208,17 @@ def train_mode(model, params, initial, prompt, training, validation, args, mode)
     torch.cuda.synchronize()
     train_seconds = time.perf_counter() - start
     after = evaluate(model, prompt, validation, args, args.seed)
+    long_after = (evaluate(model, prompt, long_validation, args, args.seed)
+                  if long_validation else None)
+    if args.save_adapters_dir:
+        adapter_dir = Path(args.save_adapters_dir)
+        adapter_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(dict(seed=args.seed, mode=mode, rank=args.rank,
+                        parameters=[p.detach().cpu() for p in params]),
+                   adapter_dir / f'seed{args.seed}-{mode}.pt')
     return dict(mode=mode, train_loss=losses, val_before=before,
-                val_after=after, train_seconds=train_seconds,
+                val_after=after, val_long_after=long_after,
+                train_seconds=train_seconds,
                 peak_reserved_gib=torch.cuda.max_memory_reserved() / 2**30)
 
 
@@ -194,17 +234,27 @@ def main():
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--train-sigma', type=float, default=0.75)
     parser.add_argument('--context-sigma', type=float, default=0.1)
-    parser.add_argument('--denoise-sigmas', type=float, nargs='+', default=[1.0, 0.75, 0.5, 0.25])
+    # Wan/Self-Forcing uses shift=5; these are shifted sigma values for the
+    # published four nominal positions 1000, 750, 500 and 250.
+    parser.add_argument('--denoise-sigmas', type=float, nargs='+',
+                        default=[1.0, 0.9375, 5.0 / 6.0, 0.625])
     parser.add_argument('--log-every', type=int, default=5)
+    parser.add_argument('--skip-long', action='store_true')
+    parser.add_argument('--save-adapters-dir')
     args = parser.parse_args()
-    if args.steps < 1 or not all(0 < x <= 1 for x in args.denoise_sigmas):
-        raise ValueError('invalid steps or denoising sigmas')
+    if (args.steps < 1 or not 0 < args.train_sigma <= 1 or
+            not 0 <= args.context_sigma <= 1 or
+            not all(0 < x <= 1 for x in args.denoise_sigmas) or
+            any(a <= b for a, b in zip(args.denoise_sigmas, args.denoise_sigmas[1:]))):
+        raise ValueError('invalid steps or sigma schedule')
     root = Path(args.data_dir)
     prompt_payload = torch.load(root / 'prompt.pt', map_location='cpu', weights_only=True)
     prompt = [prompt_payload['embedding'].to(device='cuda', dtype=torch.bfloat16)]
     training = [load_latent(root / f'image{i}-start{start}.pt')
                 for i in (2, 3) for start in (0, 81)]
     validation = [load_latent(root / f'image4-start{start}.pt') for start in (0, 81)]
+    long_validation = ([] if args.skip_long else
+                       [load_long_latent(root / 'image4-start0-long.pt')])
     model, params = load_model(args)
     initial = [p.detach().clone() for p in params]
     result = dict(config=vars(args), prompt=prompt_payload['prompt'],
@@ -218,8 +268,11 @@ def main():
     for mode in ('teacher', 'self'):
         torch.cuda.reset_peak_memory_stats()
         result[mode] = train_mode(model, params, initial, prompt,
-                                  training, validation, args, mode)
+                                  training, validation, long_validation,
+                                  args, mode)
         destination.write_text(json.dumps(result, indent=2) + '\n')
+    assert_matched_baseline(result['teacher']['val_before'],
+                            result['self']['val_before'])
     print(json.dumps({mode: dict(last_train_loss=result[mode]['train_loss'][-1],
                                  val_after=result[mode]['val_after'],
                                  train_seconds=result[mode]['train_seconds'],
