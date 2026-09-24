@@ -20,6 +20,7 @@ All rows use batch 1, bf16 base, rank-4 Q/V LoRA (737,280 trainable parameters),
 | 60×104 | 1×3 + 1×3 frames | 0 | 0.523 s | 0.561 s | 14.41 GiB | 1.0347 | 0.00586 |
 | 60×104 | 6×3 + 1×3 frames | 0 | 3.073 s | 1.016 s | 18.68 GiB | 1.0525 | 0.00295 |
 | 60×104 | 6×3 + 1×3 frames | 1 | 3.078 s | 1.017 s | 18.68 GiB | 1.0431 | 0.00358 |
+| 104×60 (portrait) | 6×3 + 1×3 frames | 0 | 3.061 s | 1.014 s | 18.68 GiB | 1.0498 | 0.00266 |
 
 Every run reported finite loss, finite nonzero LoRA gradients and successful optimizer completion. The 21-frame trials reserved 18.68 GiB of the card's 24 GiB. The last-block timing is a one-step backward probe, not end-to-end training throughput: official DMD requires other networks, text encoding, multiple denoising steps and validation. The initial weights are a **bidirectional Wan base transplanted into a causal architecture**, not the trained ODE-init generator. The random conditioning and random MSE target make the scalar loss unsuitable for video-quality comparisons.
 

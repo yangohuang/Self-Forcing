@@ -16,10 +16,10 @@
 - Create: `docs/benchmarks/2026-09-25-4090-rollout-feasibility.md`
 - Create: `scripts/rollout_probe_4090.py`
 
-- [ ] Check the local Wan checkpoint's tensor names, dtype and architectural config against `CausalWanModel`, and record the official source commit and environment versions.
-- [ ] Import the model in a suitable existing environment. Install only missing packages in a dedicated environment if required, without changing the SoulX LiveAct environment.
-- [ ] Add a `--dry-run` mode to the probe that validates checkpoint paths and dimensions without loading the full model; verify its output.
-- [ ] Commit the baseline report and probe separately from upstream's `main` branch.
+- [x] Check the local Wan checkpoint's tensor names, dtype and architectural config against `CausalWanModel`, and record the official source commit and environment versions.
+- [x] Import the model in a suitable existing environment. Install only missing packages in a dedicated environment if required, without changing the SoulX LiveAct environment.
+- [x] Add a `--dry-run` mode to the probe that validates checkpoint paths and dimensions without loading the full model; verify its output.
+- [x] Commit the baseline report and probe separately from upstream's `main` branch.
 
 ### Task 2: One generated-history backward step
 
@@ -27,11 +27,11 @@
 - Modify: `scripts/rollout_probe_4090.py`
 - Test: `tests/test_rollout_probe_4090.py`
 
-- [ ] Write and run small tests for two-block scheduling, detached history, re-noise formula, loss and gradient reporting.
-- [ ] Implement loading the causal Wan 1.3B generator in bfloat16 with a small LoRA adapter on selected attention projections; freeze base weights.
-- [ ] Generate block 1 without gradients, re-noise its output for history, and run the cached second block with gradients. Use low latent resolution first, then increase toward the published setting only if memory allows.
-- [ ] Run one optimizer step on the physical 4090. Save structured timings, peak allocated/reserved VRAM, finite-loss and nonzero-gradient checks. If OOM, document the exact configuration and one or two bounded mitigation attempts.
-- [ ] Verify the probe on a second seed and commit the implementation and benchmark evidence.
+- [x] Write and run small tests for two-block scheduling, detached history, re-noise formula, loss and gradient reporting.
+- [x] Implement loading the causal Wan 1.3B generator in bfloat16 with a small LoRA adapter on selected attention projections; freeze base weights.
+- [x] Generate block 1 without gradients, re-noise its output for history, and run the cached second block with gradients. Use low latent resolution first, then increase toward the published setting only if memory allows.
+- [x] Run one optimizer step on the physical 4090. Save structured timings, peak allocated/reserved VRAM, finite-loss and nonzero-gradient checks. If OOM, document the exact configuration and one or two bounded mitigation attempts.
+- [x] Verify the probe on a second seed and commit the implementation and benchmark evidence.
 
 ### Task 3: Controlled comparison if Task 2 passes
 
@@ -48,7 +48,7 @@
 **Files:**
 - Create: `docs/benchmarks/2026-09-25-soulx-vivix-decision.md`
 
-- [ ] Relate the feasibility result to SoulX's observed block-12 jump and explain the gap between this Wan feasibility probe and a LiveAct forcing contribution.
+- [x] Relate the feasibility result to SoulX's observed block-12 jump and explain the gap between this Wan feasibility probe and a LiveAct forcing contribution.
 - [ ] Identify a concrete next SoulX PR candidate only if it improves held-out video; keep it on the personal fork and do not open an upstream PR.
 - [ ] Summarize the experiment as accurate interview evidence, separating prior merged work, new measured results and proposed research.
 
