@@ -1,0 +1,52 @@
+{
+  "model": {
+    "path": "/data/yg/migrated/home/yg/models/wan2.1-t2v-1.3b",
+    "bytes": 5676070424,
+    "tensor_count": 825,
+    "q_weight_shape": [
+      1536,
+      1536
+    ],
+    "config": {
+      "_class_name": "WanModel",
+      "_diffusers_version": "0.30.0",
+      "dim": 1536,
+      "eps": 1e-06,
+      "ffn_dim": 8960,
+      "freq_dim": 256,
+      "in_dim": 16,
+      "model_type": "t2v",
+      "num_heads": 12,
+      "num_layers": 30,
+      "out_dim": 16,
+      "text_len": 512
+    }
+  },
+  "seed": 0,
+  "latent_h": 60,
+  "latent_w": 104,
+  "frames_per_block": 3,
+  "history_blocks": 6,
+  "denoise_sigma": 0.75,
+  "context_sigma": 0.1,
+  "rank": 4,
+  "dry_run": false,
+  "source_commit": "33593df3e81fa3ec10239271dd2c100facac6de1",
+  "torch_version": "2.6.0+cu124",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "load_seconds": 1.4398827929981053,
+  "parameters_total": 1419734080,
+  "parameters_trainable": 737280,
+  "loaded_gib": 2.646811008453369,
+  "history_seconds": 3.0734477509977296,
+  "history_detached": true,
+  "history_cache_tokens": 28080,
+  "backward_seconds": 1.0160887730016839,
+  "loss": 1.05246901512146,
+  "grad_norm": 0.0029521421529352665,
+  "finite_loss_and_grad": true,
+  "nonzero_gradient": true,
+  "peak_allocated_gib": 18.021727085113525,
+  "peak_reserved_gib": 18.677734375,
+  "success": true
+}
